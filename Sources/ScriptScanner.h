@@ -4,9 +4,10 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface ScriptScanner : NSObject
 
-* (NSArray<NSDictionary *> *)scan;
-* (NSString *)readSourceAtPath:(NSString *)path
-    error:(NSError **)error;
+- (NSArray<NSDictionary *> *)scan;
+
+- (NSString *)readSourceAtPath:(NSString *)path
+                         error:(NSError **)error;
 
 @end
 
