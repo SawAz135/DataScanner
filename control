@@ -1,0 +1,9 @@
+Package: com.datascanner.ios
+Name: DataScanner
+Version: 1.0.0
+Architecture: iphoneos-arm
+Description: Authorized source file scanner and JSON export utility.
+Maintainer: DataScanner
+Author: DataScanner
+Section: Utilities
+Depends: mobilesubstrate
