@@ -7,7 +7,7 @@
     <dict>
         <key>Bundles</key>
         <array>
-            <string>com.roblox.client</string>
+            <string>com.roblox.robloxmobile</string>
         </array>
     </dict>
 </dict>
