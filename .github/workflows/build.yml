@@ -13,8 +13,38 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Inspect repository
+        run: |
+          pwd
+          ls -la
+          find . -maxdepth 4 -type f -not -path './.git/*' | sort
+
+      - name: Verify required files
+        shell: bash
+        run: |
+          for file in \
+            Makefile \
+            control \
+            Sources/Tweak.xm \
+            Sources/ScannerCore.h \
+            Sources/ScannerCore.mm \
+            Sources/ScannerMenu.h \
+            Sources/ScannerMenu.mm \
+            Sources/ScriptScanner.h \
+            Sources/ScriptScanner.mm \
+            Sources/ExportManager.h \
+            Sources/ExportManager.mm
+          do
+            if [ ! -f "$file" ]; then
+              echo "MISSING: $file"
+              exit 1
+            fi
+            echo "OK: $file"
+          done
+
       - name: Install dependencies
-        run: brew install ldid dpkg xz
+        run: |
+          brew install ldid dpkg xz
 
       - name: Install Theos
         shell: bash
@@ -22,22 +52,17 @@ jobs:
           git clone --recursive https://github.com/theos/theos.git "$THEOS"
           test -f "$THEOS/makefiles/common.mk"
 
-      - name: Verify source files
-        run: |
-          test -f Makefile
-          test -f control
-          test -f Sources/Tweak.xm
-          test -f Sources/ScannerCore.h
-          test -f Sources/ScannerCore.mm
-          test -f Sources/ScannerMenu.h
-          test -f Sources/ScannerMenu.mm
-          test -f Sources/ScriptScanner.h
-          test -f Sources/ScriptScanner.mm
-          test -f Sources/ExportManager.h
-          test -f Sources/ExportManager.mm
-
       - name: Build DataScanner
-        run: make package FINALPACKAGE=1
+        run: |
+          make package FINALPACKAGE=1
+
+      - name: Find generated files
+        shell: bash
+        run: |
+          find packages -type f -name '*.deb' 2>/dev/null || true
+          find . -type f -name '*.dylib' \
+            -not -path './.git/*' \
+            -not -path './theos/*' || true
 
       - name: Upload package
         uses: actions/upload-artifact@v4
