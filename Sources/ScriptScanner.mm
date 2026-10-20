@@ -5,26 +5,49 @@
 @implementation ScriptScanner
 
 - (NSArray<NSDictionary *> *)scan {
-    NSError *error = nil;
+    NSError *directoryError = nil;
 
-    if (![ScannerCore prepareSourceDirectory:&error]) {
+    if (![ScannerCore prepareSourceDirectory:&directoryError]) {
+        NSLog(@"[DataScanner] Directory error: %@",
+              directoryError.localizedDescription);
         return @[];
     }
 
-    NSFileManager *fm = [NSFileManager defaultManager];
-    NSString *root = [ScannerCore sourceDirectory];
+    NSString *rootPath = [ScannerCore sourceDirectory];
+    NSFileManager *fileManager = [NSFileManager defaultManager];
 
-    NSDirectoryEnumerator *enumerator =
-        [fm enumeratorAtPath:root];
-
-    NSSet *allowedExtensions = [NSSet setWithArray:@[
-        @"lua", @"luau", @"txt", @"json", @"xml", @"md"
-    ]];
+    NSArray<NSString *> *allowedExtensions = @[
+        @"lua",
+        @"luau",
+        @"txt",
+        @"json",
+        @"xml",
+        @"md"
+    ];
 
     NSMutableArray<NSDictionary *> *results =
         [NSMutableArray array];
 
-    for (NSString *relativePath in enumerator) {
+    NSDirectoryEnumerator *enumerator =
+        [fileManager enumeratorAtPath:rootPath];
+
+    NSString *relativePath = nil;
+
+    while ((relativePath = [enumerator nextObject]) != nil) {
+        NSString *fullPath =
+            [rootPath stringByAppendingPathComponent:relativePath];
+
+        BOOL isDirectory = NO;
+
+        if (![fileManager fileExistsAtPath:fullPath
+                               isDirectory:&isDirectory]) {
+            continue;
+        }
+
+        if (isDirectory) {
+            continue;
+        }
+
         NSString *extension =
             relativePath.pathExtension.lowercaseString;
 
@@ -32,29 +55,31 @@
             continue;
         }
 
-        NSString *fullPath =
-            [root stringByAppendingPathComponent:relativePath];
+        NSError *attributesError = nil;
 
-        BOOL isDirectory = NO;
-        if (![fm fileExistsAtPath:fullPath
-                      isDirectory:&isDirectory] || isDirectory) {
+        NSDictionary<NSFileAttributeKey, id> *attributes =
+            [fileManager attributesOfItemAtPath:fullPath
+                                          error:&attributesError];
+
+        if (!attributes || attributesError) {
             continue;
         }
 
-        NSError *readError = nil;
-        NSDictionary *attributes =
-            [fm attributesOfItemAtPath:fullPath
-                                error:&readError];
+        unsigned long long fileSize =
+            [attributes fileSize];
 
-        if (readError || attributes.fileSize > 2 * 1024 * 1024) {
+        if (fileSize > 2ULL * 1024ULL * 1024ULL) {
             continue;
         }
 
         [results addObject:@{
             @"name": relativePath.lastPathComponent,
-            @"path": relativePath,
+            @"path": fullPath,
+            @"relativePath": relativePath,
             @"extension": extension,
-            @"size": attributes.fileSize
+            @"size": @(fileSize),
+            @"modified": attributes[NSFileModificationDate]
+                ?: [NSDate date]
         }];
     }
 
@@ -63,44 +88,105 @@
 
 - (NSString *)readSourceAtPath:(NSString *)path
                          error:(NSError **)error {
-    NSString *root = ScannerCore.sourceDirectory;
-    NSString *fullPath =
-        [[root stringByAppendingPathComponent:path] stringByStandardizingPath];
+    NSString *rootPath =
+        [[ScannerCore sourceDirectory]
+            stringByStandardizingPath];
 
-    NSString *normalizedRoot =
-        [root stringByStandardizingPath];
+    NSString *targetPath =
+        [path stringByStandardizingPath];
 
     NSString *requiredPrefix =
-        [normalizedRoot stringByAppendingString:@"/"];
+        [rootPath stringByAppendingString:@"/"];
 
-    if (![fullPath hasPrefix:requiredPrefix]) {
+    if (![targetPath hasPrefix:requiredPrefix]) {
         if (error) {
             *error = [NSError errorWithDomain:@"DataScanner"
                                          code:1
                                      userInfo:@{
                 NSLocalizedDescriptionKey:
-                    @"Chemin non autorisé."
+                    @"Access denied: file is outside the scanner directory."
             }];
         }
+
         return nil;
     }
 
+    NSFileManager *fileManager =
+        [NSFileManager defaultManager];
+
     BOOL isDirectory = NO;
-    if (![[NSFileManager defaultManager]
-            fileExistsAtPath:fullPath
-                 isDirectory:&isDirectory] || isDirectory) {
+
+    if (![fileManager fileExistsAtPath:targetPath
+                           isDirectory:&isDirectory] ||
+        isDirectory) {
         if (error) {
             *error = [NSError errorWithDomain:@"DataScanner"
                                          code:2
                                      userInfo:@{
                 NSLocalizedDescriptionKey:
-                    @"Fichier introuvable."
+                    @"The requested file does not exist or is not a file."
             }];
         }
+
         return nil;
     }
 
-    return [NSString stringWithContentsOfFile:fullPath
+    NSString *extension =
+        targetPath.pathExtension.lowercaseString;
+
+    NSSet<NSString *> *allowedExtensions = [NSSet setWithArray:@[
+        @"lua",
+        @"luau",
+        @"txt",
+        @"json",
+        @"xml",
+        @"md"
+    ]];
+
+    if (![allowedExtensions containsObject:extension]) {
+        if (error) {
+            *error = [NSError errorWithDomain:@"DataScanner"
+                                         code:3
+                                     userInfo:@{
+                NSLocalizedDescriptionKey:
+                    @"This file type is not supported."
+            }];
+        }
+
+        return nil;
+    }
+
+    NSError *attributesError = nil;
+
+    NSDictionary<NSFileAttributeKey, id> *attributes =
+        [fileManager attributesOfItemAtPath:targetPath
+                                      error:&attributesError];
+
+    if (!attributes) {
+        if (error) {
+            *error = attributesError;
+        }
+
+        return nil;
+    }
+
+    unsigned long long fileSize =
+        [attributes fileSize];
+
+    if (fileSize > 2ULL * 1024ULL * 1024ULL) {
+        if (error) {
+            *error = [NSError errorWithDomain:@"DataScanner"
+                                         code:4
+                                     userInfo:@{
+                NSLocalizedDescriptionKey:
+                    @"The file exceeds the 2 MiB size limit."
+            }];
+        }
+
+        return nil;
+    }
+
+    return [NSString stringWithContentsOfFile:targetPath
                                      encoding:NSUTF8StringEncoding
                                         error:error];
 }
