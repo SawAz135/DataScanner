@@ -1,0 +1,26 @@
+
+name: Build DataScanner
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          brew update
+          brew install make
+          git clone --depth=1 https://github.com/theos/theos.git "$HOME/theos"
+
+      - name: Build package
+        env:
+          THEOS: ${{ github.workspace }}/theos
+        run: |
+          echo "Theos directory: $THEOS"
+          make package FINALPACKAGE=1
