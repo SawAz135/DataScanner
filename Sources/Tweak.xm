@@ -10,18 +10,12 @@
 
             NSError *error = nil;
             if (![ScannerCore prepareSourceDirectory:&error]) {
-                NSLog(@"[DataScanner] Directory error: %@",
+                NSLog(@"[DataScanner] Error: %@",
                       error.localizedDescription);
                 return;
             }
 
-            [[NSNotificationCenter defaultCenter]
-                addObserverForName:@"DataScannerInitializeMenu"
-                            object:nil
-                             queue:[NSOperationQueue mainQueue]
-                        usingBlock:^(NSNotification *note) {
-                [ScannerMenu showMenu];
-            }];
+            [ScannerMenu showMenu];
         });
     }
 }
