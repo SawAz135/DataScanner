@@ -1,0 +1,15 @@
+
+#import <Foundation/Foundation.h>
+
+NS_ASSUME_NONNULL_BEGIN
+
+@interface ScriptScanner : NSObject
+
+- (NSArray<NSDictionary *> *)scan;
+
+- (NSString *)readSourceAtPath:(NSString *)path
+                         error:(NSError **)error;
+
+@end
+
+NS_ASSUME_NONNULL_END
