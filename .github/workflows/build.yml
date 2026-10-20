@@ -8,19 +8,39 @@ jobs:
   build:
     runs-on: macos-14
 
+    env:
+      THEOS: ${{ runner.temp }}/theos
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install build tools
+      - name: Install build dependencies
         run: |
-          brew update
-          brew install make
-          git clone --depth=1 https://github.com/theos/theos.git "$HOME/theos"
+          brew install ldid dpkg xz
+
+      - name: Install Theos
+        run: |
+          git clone --recursive https://github.com/theos/theos.git "$THEOS"
+          test -f "$THEOS/makefiles/common.mk"
+
+      - name: Verify source files
+        run: |
+          test -f Makefile
+          test -f control
+          test -f Sources/Tweak.xm
+          test -f Sources/ScannerCore.mm
+          test -f Sources/ScannerMenu.mm
+          test -f Sources/ScriptScanner.mm
+          test -f Sources/ExportManager.mm
 
       - name: Build package
-        env:
-          THEOS: ${{ github.workspace }}/theos
         run: |
-          echo "Theos directory: $THEOS"
           make package FINALPACKAGE=1
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: DataScanner-package
+          path: packages/*.deb
+          if-no-files-found: error
