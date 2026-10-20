@@ -5,125 +5,341 @@
 #import "ExportManager.h"
 
 @interface ScannerMenu ()
-@property (nonatomic, strong) UIWindow *window;
-@property (nonatomic, strong) UINavigationController *navigation;
 @end
 
 @implementation ScannerMenu
 
-static ScannerMenu *sharedMenu;
+static UIWindow *scannerWindow = nil;
+static UIView *floatingButton = nil;
+static UIView *menuPanel = nil;
+static BOOL menuVisible = NO;
+
++ (UIColor *)backgroundColor {
+    return [UIColor colorWithRed:0.055
+                           green:0.065
+                            blue:0.09
+                           alpha:0.97];
+}
+
++ (UIColor *)accentColor {
+    return [UIColor colorWithRed:0.35
+                           green:0.55
+                            blue:1.0
+                           alpha:1.0];
+}
+
++ (UILabel *)label:(NSString *)text
+              size:(CGFloat)size
+             color:(UIColor *)color {
+    UILabel *label = [[UILabel alloc] init];
+    label.text = text;
+    label.font = [UIFont systemFontOfSize:size
+                                   weight:UIFontWeightSemibold];
+    label.textColor = color;
+    label.numberOfLines = 0;
+    return label;
+}
+
++ (UIButton *)button:(NSString *)title
+              action:(SEL)action {
+    UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
+    [button setTitle:title forState:UIControlStateNormal];
+    button.titleLabel.font = [UIFont systemFontOfSize:15
+                                               weight:UIFontWeightSemibold];
+    button.backgroundColor = [self accentColor];
+    [button setTitleColor:UIColor.whiteColor
+                 forState:UIControlStateNormal];
+    button.layer.cornerRadius = 12;
+    [button addTarget:self
+               action:action
+     forControlEvents:UIControlEventTouchUpInside];
+    return button;
+}
 
 + (void)showMenu {
     dispatch_async(dispatch_get_main_queue(), ^{
-        if (!sharedMenu) {
-            sharedMenu = [ScannerMenu new];
+        if (scannerWindow) {
+            [self showFloatingButton];
+            return;
         }
-        [sharedMenu present];
+
+        UIWindowScene *activeScene = nil;
+
+        for (UIScene *scene in
+             UIApplication.sharedApplication.connectedScenes) {
+            if (scene.activationState == UISceneActivationStateForegroundActive &&
+                [scene isKindOfClass:[UIWindowScene class]]) {
+                activeScene = (UIWindowScene *)scene;
+                break;
+            }
+        }
+
+        if (!activeScene) {
+            NSLog(@"[DataScanner] No active window scene.");
+            return;
+        }
+
+        scannerWindow = [[UIWindow alloc] initWithWindowScene:activeScene];
+        scannerWindow.frame = activeScene.coordinateSpace.bounds;
+        scannerWindow.windowLevel = UIWindowLevelAlert + 1;
+        scannerWindow.backgroundColor = UIColor.clearColor;
+        scannerWindow.rootViewController = [[UIViewController alloc] init];
+        scannerWindow.rootViewController.view.backgroundColor =
+            UIColor.clearColor;
+        scannerWindow.rootViewController.view.userInteractionEnabled = YES;
+        scannerWindow.hidden = NO;
+
+        [self showFloatingButton];
+        [self hideMenu];
     });
 }
 
-+ (void)hideMenu {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        sharedMenu.window.hidden = YES;
-        sharedMenu.window = nil;
-    });
-}
-
-- (void)present {
-    if (self.window) {
-        self.window.hidden = NO;
++ (void)showFloatingButton {
+    if (!scannerWindow || floatingButton) {
         return;
     }
 
-    UIViewController *root = [UIViewController new];
-    root.view.backgroundColor = [UIColor colorWithRed:0.04
-                                                 green:0.05
-                                                  blue:0.10
-                                                 alpha:1.0];
+    UIView *button = [[UIView alloc] initWithFrame:
+                      CGRectMake(18, 180, 54, 54)];
+    button.backgroundColor = [self accentColor];
+    button.layer.cornerRadius = 27;
+    button.layer.borderWidth = 2;
+    button.layer.borderColor =
+        [UIColor colorWithWhite:1 alpha:0.85].CGColor;
+    button.layer.shadowColor = UIColor.blackColor.CGColor;
+    button.layer.shadowOpacity = 0.3;
+    button.layer.shadowRadius = 8;
+    button.layer.shadowOffset = CGSizeMake(0, 3);
+    button.userInteractionEnabled = YES;
 
-    UILabel *title = [UILabel new];
-    title.text = @"DATASCANNER";
-    title.textColor = [UIColor colorWithRed:0.20
-                                      green:0.95
-                                       blue:0.95
-                                      alpha:1.0];
-    title.font = [UIFont boldSystemFontOfSize:25];
-    title.translatesAutoresizingMaskIntoConstraints = NO;
-    [root.view addSubview:title];
+    UILabel *title = [self label:@"DS"
+                            size:16
+                           color:UIColor.whiteColor];
+    title.textAlignment = NSTextAlignmentCenter;
+    title.frame = button.bounds;
+    title.autoresizingMask =
+        UIViewAutoresizingFlexibleWidth |
+        UIViewAutoresizingFlexibleHeight;
+    title.userInteractionEnabled = NO;
+    [button addSubview:title];
 
-    UILabel *subtitle = [UILabel new];
-    subtitle.text = @"Authorized source explorer";
-    subtitle.textColor = UIColor.lightGrayColor;
-    subtitle.translatesAutoresizingMaskIntoConstraints = NO;
-    [root.view addSubview:subtitle];
+    UITapGestureRecognizer *tap =
+        [[UITapGestureRecognizer alloc]
+         initWithTarget:self
+         action:@selector(toggleMenu)];
+    [button addGestureRecognizer:tap];
 
-    UIButton *scanButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    [scanButton setTitle:@"SCAN SOURCE FILES" forState:UIControlStateNormal];
-    [scanButton setTitleColor:UIColor.whiteColor
-                     forState:UIControlStateNormal];
-    scanButton.backgroundColor =
-        [UIColor colorWithRed:0.05 green:0.55 blue:0.65 alpha:1.0];
-    scanButton.layer.cornerRadius = 12;
-    scanButton.translatesAutoresizingMaskIntoConstraints = NO;
-    [scanButton addTarget:self
-                   action:@selector(scanFiles)
-         forControlEvents:UIControlEventTouchUpInside];
-    [root.view addSubview:scanButton];
+    UIPanGestureRecognizer *pan =
+        [[UIPanGestureRecognizer alloc]
+         initWithTarget:self
+         action:@selector(moveFloatingButton:)];
+    [button addGestureRecognizer:pan];
 
-    UIButton *closeButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    [closeButton setTitle:@"CLOSE" forState:UIControlStateNormal];
-    closeButton.translatesAutoresizingMaskIntoConstraints = NO;
-    [closeButton addTarget:self
-                    action:@selector(closeMenu)
-          forControlEvents:UIControlEventTouchUpInside];
-    [root.view addSubview:closeButton];
-
-    [NSLayoutConstraint activateConstraints:@[
-        [title.topAnchor constraintEqualToAnchor:root.view.safeAreaLayoutGuide.topAnchor constant:24],
-        [title.centerXAnchor constraintEqualToAnchor:root.view.centerXAnchor],
-        [subtitle.topAnchor constraintEqualToAnchor:title.bottomAnchor constant:8],
-        [subtitle.centerXAnchor constraintEqualToAnchor:root.view.centerXAnchor],
-        [scanButton.topAnchor constraintEqualToAnchor:subtitle.bottomAnchor constant:28],
-        [scanButton.leadingAnchor constraintEqualToAnchor:root.view.leadingAnchor constant:20],
-        [scanButton.trailingAnchor constraintEqualToAnchor:root.view.trailingAnchor constant:-20],
-        [scanButton.heightAnchor constraintEqualToConstant:52],
-        [closeButton.topAnchor constraintEqualToAnchor:scanButton.bottomAnchor constant:14],
-        [closeButton.centerXAnchor constraintEqualToAnchor:root.view.centerXAnchor]
-    ]];
-
-    self.navigation = [[UINavigationController alloc]
-        initWithRootViewController:root];
-    self.navigation.navigationBarHidden = YES;
-
-    self.window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
-    self.window.rootViewController = self.navigation;
-    self.window.windowLevel = UIWindowLevelAlert + 1;
-    self.window.hidden = NO;
+    floatingButton = button;
+    [scannerWindow.rootViewController.view addSubview:floatingButton];
 }
 
-- (void)scanFiles {
-    NSArray *files = [[ScriptScanner alloc] scan];
++ (void)moveFloatingButton:(UIPanGestureRecognizer *)gesture {
+    UIView *view = gesture.view;
+    CGPoint translation = [gesture translationInView:view.superview];
 
-    UIAlertController *alert = [UIAlertController
-        alertControllerWithTitle:@"Scan complete"
-                         message:[NSString stringWithFormat:
-                             @"%lu authorized source files found.",
-                             (unsigned long)files.count]
-                  preferredStyle:UIAlertControllerStyleAlert];
+    view.center = CGPointMake(view.center.x + translation.x,
+                              view.center.y + translation.y);
+    [gesture setTranslation:CGPointZero inView:view.superview];
 
-    [alert addAction:[UIAlertAction
-        actionWithTitle:@"OK"
-                  style:UIAlertActionStyleDefault
-                handler:nil]];
+    if (gesture.state == UIGestureRecognizerStateEnded) {
+        CGRect bounds = view.superview.bounds;
+        CGFloat halfWidth = view.bounds.size.width / 2;
+        CGFloat halfHeight = view.bounds.size.height / 2;
 
-    [self.navigation.topViewController presentViewController:alert
-                                                    animated:YES
-                                                  completion:nil];
+        CGFloat x = MIN(MAX(view.center.x, halfWidth),
+                        bounds.size.width - halfWidth);
+        CGFloat y = MIN(MAX(view.center.y, halfHeight),
+                        bounds.size.height - halfHeight);
+
+        [UIView animateWithDuration:0.18 animations:^{
+            view.center = CGPointMake(x, y);
+        }];
+    }
 }
 
-- (void)closeMenu {
-    self.window.hidden = YES;
-    self.window = nil;
++ (void)toggleMenu {
+    if (menuVisible) {
+        [self hideMenu];
+    } else {
+        [self openMenu];
+    }
+}
+
++ (void)openMenu {
+    if (!scannerWindow || menuVisible) {
+        return;
+    }
+
+    menuVisible = YES;
+
+    UIView *root = scannerWindow.rootViewController.view;
+
+    UIView *panel = [[UIView alloc] initWithFrame:
+                     CGRectMake(20, 0,
+                                root.bounds.size.width - 40, 330)];
+    panel.center = CGPointMake(root.bounds.size.width / 2,
+                               root.bounds.size.height / 2);
+    panel.autoresizingMask =
+        UIViewAutoresizingFlexibleWidth |
+        UIViewAutoresizingFlexibleTopMargin |
+        UIViewAutoresizingFlexibleBottomMargin;
+    panel.backgroundColor = [self backgroundColor];
+    panel.layer.cornerRadius = 22;
+    panel.layer.borderWidth = 1;
+    panel.layer.borderColor =
+        [UIColor colorWithWhite:1 alpha:0.14].CGColor;
+    panel.layer.shadowColor = UIColor.blackColor.CGColor;
+    panel.layer.shadowOpacity = 0.35;
+    panel.layer.shadowRadius = 20;
+    panel.layer.shadowOffset = CGSizeMake(0, 8);
+
+    UILabel *heading = [self label:@"DATASCANNER"
+                              size:20
+                             color:UIColor.whiteColor];
+    heading.frame = CGRectMake(20, 18, panel.bounds.size.width - 75, 28);
+    heading.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    [panel addSubview:heading];
+
+    UIButton *close = [UIButton buttonWithType:UIButtonTypeSystem];
+    close.frame = CGRectMake(panel.bounds.size.width - 48, 12, 36, 36);
+    close.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
+    [close setTitle:@"✕" forState:UIControlStateNormal];
+    [close setTitleColor:UIColor.whiteColor
+                forState:UIControlStateNormal];
+    close.titleLabel.font = [UIFont systemFontOfSize:19
+                                               weight:UIFontWeightBold];
+    close.backgroundColor = [UIColor colorWithWhite:1 alpha:0.09];
+    close.layer.cornerRadius = 11;
+    [close addTarget:self
+              action:@selector(hideMenu)
+    forControlEvents:UIControlEventTouchUpInside];
+    [panel addSubview:close];
+
+    UILabel *subtitle =
+        [self label:@"AUTHORIZED LOCAL SOURCE EXPLORER"
+                size:10
+               color:[UIColor colorWithWhite:0.65 alpha:1]];
+    subtitle.frame = CGRectMake(20, 52, panel.bounds.size.width - 40, 18);
+    subtitle.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    [panel addSubview:subtitle];
+
+    UIView *separator = [[UIView alloc]
+                         initWithFrame:CGRectMake(20, 82,
+                                                  panel.bounds.size.width - 40,
+                                                  1)];
+    separator.backgroundColor = [UIColor colorWithWhite:1 alpha:0.12];
+    separator.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    [panel addSubview:separator];
+
+    UILabel *status = [self label:@"Ready to scan local files"
+                              size:13
+                             color:[UIColor colorWithWhite:0.82 alpha:1]];
+    status.frame = CGRectMake(20, 97, panel.bounds.size.width - 40, 24);
+    status.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    status.tag = 4001;
+    [panel addSubview:status];
+
+    UIButton *scan = [self button:@"SCAN SOURCE FILES"
+                           action:@selector(scanFiles)];
+    scan.frame = CGRectMake(20, 137, panel.bounds.size.width - 40, 48);
+    scan.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    [panel addSubview:scan];
+
+    UIButton *export = [self button:@"EXPORT STATUS JSON"
+                             action:@selector(exportStatus)];
+    export.frame = CGRectMake(20, 197, panel.bounds.size.width - 40, 44);
+    export.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    export.backgroundColor =
+        [UIColor colorWithRed:0.16 green:0.19 blue:0.27 alpha:1];
+    [panel addSubview:export];
+
+    UILabel *footer = [self label:@"Tap DS anytime to reopen"
+                             size:11
+                            color:[UIColor colorWithWhite:0.55 alpha:1]];
+    footer.textAlignment = NSTextAlignmentCenter;
+    footer.frame = CGRectMake(20, 269, panel.bounds.size.width - 40, 20);
+    footer.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    [panel addSubview:footer];
+
+    menuPanel = panel;
+    [root addSubview:menuPanel];
+
+    [root bringSubviewToFront:floatingButton];
+}
+
++ (void)hideMenu {
+    menuVisible = NO;
+    [menuPanel removeFromSuperview];
+    menuPanel = nil;
+}
+
++ (void)scanFiles {
+    NSArray<NSDictionary *> *files = [[[ScriptScanner alloc] init] scan];
+
+    UILabel *status = [menuPanel viewWithTag:4001];
+    status.text = [NSString stringWithFormat:
+                   @"Found %lu supported local file(s)",
+                   (unsigned long)files.count];
+
+    UIAlertController *alert =
+        [UIAlertController alertControllerWithTitle:@"Scan complete"
+                                            message:[NSString stringWithFormat:
+                                                     @"Found %lu supported files in DataScannerSources.",
+                                                     (unsigned long)files.count]
+                                     preferredStyle:UIAlertControllerStyleAlert];
+
+    [alert addAction:[UIAlertAction actionWithTitle:@"OK"
+                                              style:UIAlertActionStyleDefault
+                                            handler:nil]];
+
+    [scannerWindow.rootViewController presentViewController:alert
+                                                   animated:YES
+                                                 completion:nil];
+}
+
++ (void)exportStatus {
+    NSDictionary *status = [ScannerCore status];
+    NSError *error = nil;
+
+    NSData *json = [NSJSONSerialization dataWithJSONObject:status
+                                                   options:NSJSONWritingPrettyPrinted
+                                                     error:&error];
+
+    if (!json || error) {
+        [self showMessage:@"Export failed"
+                  message:error.localizedDescription ?: @"Unable to create JSON."];
+        return;
+    }
+
+    NSString *text = [[NSString alloc] initWithData:json
+                                           encoding:NSUTF8StringEncoding];
+
+    [ExportManager copyTextToClipboard:text ?: @"{}"];
+
+    [self showMessage:@"Status copied"
+              message:@"The status JSON was copied to the clipboard."];
+}
+
++ (void)showMessage:(NSString *)title
+            message:(NSString *)message {
+    UIAlertController *alert =
+        [UIAlertController alertControllerWithTitle:title
+                                            message:message
+                                     preferredStyle:UIAlertControllerStyleAlert];
+
+    [alert addAction:[UIAlertAction actionWithTitle:@"OK"
+                                              style:UIAlertActionStyleDefault
+                                            handler:nil]];
+
+    [scannerWindow.rootViewController presentViewController:alert
+                                                   animated:YES
+                                                 completion:nil];
 }
 
 @end
