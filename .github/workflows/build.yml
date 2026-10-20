@@ -1,4 +1,3 @@
-
 name: Build DataScanner
 
 on:
@@ -7,19 +6,18 @@ on:
 jobs:
   build:
     runs-on: macos-14
-
     env:
-      THEOS: ${{ runner.temp }}/theos
+      THEOS: ${{ github.workspace }}/theos
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install build dependencies
-        run: |
-          brew install ldid dpkg xz
+      - name: Install dependencies
+        run: brew install ldid dpkg xz
 
       - name: Install Theos
+        shell: bash
         run: |
           git clone --recursive https://github.com/theos/theos.git "$THEOS"
           test -f "$THEOS/makefiles/common.mk"
@@ -29,14 +27,17 @@ jobs:
           test -f Makefile
           test -f control
           test -f Sources/Tweak.xm
+          test -f Sources/ScannerCore.h
           test -f Sources/ScannerCore.mm
+          test -f Sources/ScannerMenu.h
           test -f Sources/ScannerMenu.mm
+          test -f Sources/ScriptScanner.h
           test -f Sources/ScriptScanner.mm
+          test -f Sources/ExportManager.h
           test -f Sources/ExportManager.mm
 
-      - name: Build package
-        run: |
-          make package FINALPACKAGE=1
+      - name: Build DataScanner
+        run: make package FINALPACKAGE=1
 
       - name: Upload package
         uses: actions/upload-artifact@v4
